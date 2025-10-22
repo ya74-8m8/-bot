@@ -8,7 +8,7 @@ import os
 import psycopg2 
 from urllib.parse import urlparse
 
-TOKEN = "MTQyMjE4NzIxMjE5MTE3NDc0Nw.GypbSZ.HyAdJrj7jEzdN0zfgQbwOI5h_Ee-S66eKEJfyQ"
+TOKEN = "MTQyMjE4NzIxMjE5MTE3NDc0Nw.G5yqUL.DUVMI4tlChZutvhbDrUgn-ZaDmTyGNHjoYNyLU"
 LOG_CHANNEL_ID = 1420051484929687686
 MUTE_ROLE_ID = 1426205474071511040
 DATABASE_URL = os.environ.get("DATABASE_URL")
@@ -318,3 +318,4 @@ try:
 except Exception as e:
     print(f"Botの起動中にエラーが発生しました: {e}")
     print("TOKENまたはDATABASE_URLが正しいか確認してください。")
+
