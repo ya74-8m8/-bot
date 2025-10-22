@@ -8,11 +8,15 @@ import os
 import psycopg2 
 from urllib.parse import urlparse
 
-TOKEN = "MTQyMjE4NzIxMjE5MTE3NDc0Nw.G5yqUL.DUVMI4tlChZutvhbDrUgn-ZaDmTyGNHjoYNyLU"
+# --- 設定値 ---
+# TOKENはセキュリティのため、Railwayの環境変数から読み込む
+TOKEN = os.environ.get("TOKEN")
 LOG_CHANNEL_ID = 1420051484929687686
 MUTE_ROLE_ID = 1426205474071511040
+# DATABASE_URLはRailwayの環境変数から読み込む
 DATABASE_URL = os.environ.get("DATABASE_URL")
 
+# --- 期間解析ヘルパー関数 ---
 def parse_duration(duration_str: str) -> int | None:
     match = re.match(r'(\d+)([dhms])', duration_str.lower())
     if not match:
@@ -41,21 +45,25 @@ def format_duration(minutes: int) -> str:
     return f"{minutes}分間"
 
 
+# --- PostgreSQLデータベースクラス ---
 class WarningDB:
     def __init__(self):
         if not DATABASE_URL:
-            raise ValueError("DATABASE_URL環境変数が設定されていません。")
+            # 環境変数が設定されていない場合のエラー処理
+            raise ValueError("DATABASE_URL環境変数が設定されていません。Railwayのダッシュボードで設定が必要です。")
             
         url = urlparse(DATABASE_URL)
+        # PostgreSQLに接続
         self.conn = psycopg2.connect(
             database=url.path[1:],
             user=url.username,
             password=url.password,
             host=url.hostname,
             port=url.port,
-            sslmode='require' if 'render.com' in url.hostname else 'prefer'
+            sslmode='require' if 'render.com' in url.hostname or 'railway.app' in url.hostname else 'prefer'
         )
         self.cursor = self.conn.cursor()
+        # テーブル作成（存在しない場合）
         self.cursor.execute("""
             CREATE TABLE IF NOT EXISTS warnings (
                 id SERIAL PRIMARY KEY,
@@ -104,6 +112,7 @@ class WarningDB:
         self.conn.commit()
         return deleted_count
 
+# --- Discordクライアント ---
 class MyClient(discord.Client):
     def __init__(self, *, intents: discord.Intents):
         super().__init__(intents=intents)
@@ -115,6 +124,8 @@ class MyClient(discord.Client):
         await self.tree.sync()
         print('Commands synced.')
 
+    # --- コマンド：警告（/warn） ---
+    @app_commands.checks.has_permissions(moderate_members=True) # モデレーター権限チェック
     @app_commands.command(name="warn", description="違反者に警告を送り、ログに記録します。")
     @app_commands.rename(
         target_user="対象ユーザー",
@@ -192,6 +203,8 @@ class MyClient(discord.Client):
             ephemeral=True
         )
 
+    # --- コマンド：一時処罰（/punish） ---
+    @app_commands.checks.has_permissions(moderate_members=True) # モデレーター権限チェック
     @app_commands.command(name="punish", description="違反ロールを任意で付与し、指定期間後に自動で解除します。（例: 1d, 12h, 30m）")
     @app_commands.rename(
         target_user="対象ユーザー",
@@ -248,6 +261,8 @@ class MyClient(discord.Client):
             )
 
 
+    # --- コマンド：警告履歴確認（/warn_check） ---
+    @app_commands.checks.has_permissions(moderate_members=True) # モデレーター権限チェック
     @app_commands.command(name="warn_check", description="ユーザーの累積警告回数と詳細を確認します。")
     @app_commands.rename(target_user="対象ユーザー")
     @app_commands.describe(target_user="警告回数を確認するユーザー")
@@ -271,6 +286,8 @@ class MyClient(discord.Client):
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
 
+    # --- コマンド：最新の警告を削除（/warn_delete） ---
+    @app_commands.checks.has_permissions(moderate_members=True) # モデレーター権限チェック
     @app_commands.command(name="warn_delete", description="対象ユーザーの最新の警告記録を1件削除し、累積回数をリセットします。")
     @app_commands.rename(target_user="対象ユーザー")
     @app_commands.describe(target_user="最新の警告を削除するユーザー")
@@ -289,6 +306,8 @@ class MyClient(discord.Client):
             )
 
 
+    # --- コマンド：警告記録を全てリセット（/warn_reset） ---
+    @app_commands.checks.has_permissions(moderate_members=True) # モデレーター権限チェック
     @app_commands.command(name="warn_reset", description="対象ユーザーの全ての警告記録を削除し、累積回数をリセットします。")
     @app_commands.rename(target_user="対象ユーザー")
     @app_commands.describe(target_user="全ての警告をリセットするユーザー")
@@ -307,15 +326,21 @@ class MyClient(discord.Client):
                 ephemeral=True
             )
 
+# --- クライアントの起動 ---
 intents = discord.Intents.default()
 intents.members = True
 intents.message_content = False
 
 client = MyClient(intents=intents)
 
-try:
-    client.run(TOKEN)
-except Exception as e:
-    print(f"Botの起動中にエラーが発生しました: {e}")
-    print("TOKENまたはDATABASE_URLが正しいか確認してください。")
-
+if not TOKEN:
+    print("\n\n#########################################################")
+    print("## 🚨 エラー: TOKEN環境変数が設定されていません。 ##")
+    print("## Railwayの環境変数にDiscord Botのトークンを設定してください。 ##")
+    print("#########################################################\n")
+else:
+    try:
+        client.run(TOKEN)
+    except Exception as e:
+        print(f"Botの起動中に致命的なエラーが発生しました: {e}")
+        print("トークンまたはDATABASE_URLが正しいか確認してください。")
